@@ -1,8 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import LookaheadCombobox from './LookaheadCombobox.jsx';
 import { decodeInspectionBits, deriveResultStage } from './inspectionBits.js';
+import { initRemoteFileUpload, putBinary, completeRemoteFileUpload, ensureDevToken } from './uploadApi.js';
 
-export default function InspectionResultDetail({ id }) {
+const BACKEND_BASE = (import.meta?.env?.VITE_BACKEND_BASE_URL) || 'http://localhost:3100';
+
+export default function InspectionResultDetail({ id, token }) {
   const [detail, setDetail] = useState(null);
   const [operatorId, setOperatorId] = useState(null); // currently selected operator id (operatorId_operator)
   const [saving, setSaving] = useState(false);
@@ -16,7 +19,9 @@ export default function InspectionResultDetail({ id }) {
     (async () => {
       setLoading(true); setError(null);
       try {
-        const resp = await fetch(`/inspection/results/${id}`);
+        const resp = await fetch(`${BACKEND_BASE}/inspection/results/${id}`, {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+        });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
         setDetail(data);
@@ -37,13 +42,17 @@ export default function InspectionResultDetail({ id }) {
 
   const [tab, setTab] = useState('summary');
   async function loadContents(){
-    const resp = await fetch(`/inspection/results/${id}/contents`); const data = await resp.json(); setContents(data);
+    const resp = await fetch(`${BACKEND_BASE}/inspection/results/${id}/contents`, { headers: token ? { 'Authorization': `Bearer ${token}` } : {} });
+    const data = await resp.json(); setContents(data);
   }
   const [contents, setContents] = useState([]);
   const [files, setFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(null);
   const [activities, setActivities] = useState([]);
-  async function loadFiles(){ const resp = await fetch(`/inspection/results/${id}/files`); setFiles(await resp.json()); }
-  async function loadActivities(){ const resp = await fetch(`/inspection/results/${id}/activities`); setActivities(await resp.json()); }
+  async function loadFiles(){ const resp = await fetch(`${BACKEND_BASE}/inspection/results/${id}/files`, { headers: token ? { 'Authorization': `Bearer ${token}` } : {} }); setFiles(await resp.json()); }
+  async function loadActivities(){ const resp = await fetch(`${BACKEND_BASE}/inspection/results/${id}/activities`, { headers: token ? { 'Authorization': `Bearer ${token}` } : {} }); setActivities(await resp.json()); }
   useEffect(()=>{ if(tab==='contents') loadContents(); if(tab==='files') loadFiles(); if(tab==='activities') loadActivities(); },[tab]);
   async function ensureDevToken() {
     if (window.__devToken) return window.__devToken;
@@ -65,11 +74,11 @@ export default function InspectionResultDetail({ id }) {
     setSaving(true); setSaveError(null); setSaveSuccess(false);
     try {
       const token = await ensureDevToken();
-      const resp = await fetch(`/inspection/results/${detail.inspectionResultId}`, {
+      const resp = await fetch(`${BACKEND_BASE}/inspection/results/${detail.inspectionResultId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         body: JSON.stringify({ operatorIdOperator: operatorId || null })
       });
@@ -134,6 +143,36 @@ export default function InspectionResultDetail({ id }) {
       {tab==='files' && (
         <div>
           <h4>Files</h4>
+          <div style={{ marginBottom:'0.75rem', border:'1px solid #ddd', padding:'0.5rem', borderRadius:4 }}>
+            <strong>Upload New File</strong>
+            <div style={{ display:'flex', gap:'0.5rem', marginTop:4, flexWrap:'wrap' }}>
+              <input type='file' id='fileInput' disabled={uploading} onChange={async (e)=>{
+                const f = e.target.files && e.target.files[0]; if(!f) return;
+                setUploadErr(null); setUploading(true); setUploadProgress('init');
+                try {
+                  const token = await ensureDevToken();
+                  setUploadProgress('request-init');
+                  const init = await initRemoteFileUpload(id, f.name, token);
+                  setUploadProgress('uploading');
+                  // Use fetch directly; progress events not native without XHR - set coarse states
+                  await putBinary(init.upload.original, f);
+                  setUploadProgress('finalizing');
+                  await completeRemoteFileUpload(id, init, token);
+                  setUploadProgress('refresh');
+                  await loadFiles();
+                  setUploadProgress('done');
+                  setTimeout(()=> setUploadProgress(null), 2000);
+                } catch (err) {
+                  setUploadErr(err.message);
+                } finally {
+                  setUploading(false);
+                  e.target.value = '';
+                }
+              }} />
+              {uploading && <span style={{ fontSize:'0.65rem' }}>Status: {uploadProgress}</span>}
+              {uploadErr && <span style={{ fontSize:'0.65rem', color:'red' }}>Error: {uploadErr}</span>}
+            </div>
+          </div>
           <table style={{ width:'100%', fontSize:'0.75rem' }}>
             <thead><tr><th>Name</th><th>Preview</th><th>Medium</th></tr></thead>
             <tbody>{files.map(f=> <tr key={f.inspectionResultFileId}><td>{f.fileName}</td><td><a href={f.filePreviewUri} target='_blank'>preview</a></td><td><a href={f.fileMediumSizeUri} target='_blank'>medium</a></td></tr>)}</tbody>

@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { decodeInspectionBits, deriveResultStage } from './inspectionBits.js';
 
-export default function InspectionResultsList({ onSelect }){
+const BACKEND_BASE = (import.meta?.env?.VITE_BACKEND_BASE_URL) || 'http://localhost:3100';
+
+export default function InspectionResultsList({ onSelect, token }){
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [filters, setFilters] = useState({ caseNumber: '', containerNumber: '' });
@@ -13,7 +15,9 @@ export default function InspectionResultsList({ onSelect }){
     const params = new URLSearchParams();
     if (filters.caseNumber) params.append('caseNumber', filters.caseNumber);
     if (filters.containerNumber) params.append('containerNumber', filters.containerNumber);
-    const resp = await fetch(`/inspection/results?${params.toString()}`);
+    const resp = await fetch(`${BACKEND_BASE}/inspection/results?${params.toString()}`, {
+      headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+    });
     const data = await resp.json();
     setItems(Array.isArray(data)?data:[]);
     setLoading(false);
