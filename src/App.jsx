@@ -97,7 +97,6 @@ function App() {
         {!path.startsWith('/wizard') && token ? (
           <nav style={{ padding: '.5rem 1rem', display: 'flex', gap: '1rem' }}>
             <Link to="/" style={{ color: '#2563eb' }}>Inspections</Link>
-            <Link to="/dashboard" style={{ color: '#2563eb' }}>Dashboard</Link>
           </nav>
         ) : null}
         <main style={{ padding: '1rem' }}>
@@ -109,7 +108,6 @@ function App() {
             <Route path="/" element={token ? <RemoteInspectionsPage /> : <LoginPage />} />
             <Route path="/inspections" element={token ? <RemoteInspectionsPage /> : <LoginPage />} />
             <Route path="/inspections/:id" element={token ? <InspectionDetailRouteWrapper /> : <LoginPage />} />
-            <Route path="/dashboard" element={token ? <div>Dashboard (placeholder)</div> : <LoginPage />} />
           </Routes>
         </main>
       </BrowserRouter>
